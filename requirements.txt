@@ -1,0 +1,25 @@
+# --- Web 框架 ---
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0  # ASGI 服务器
+python-multipart          # 允许接口上传文件
+
+# --- 数据库客户端 ---
+elasticsearch==8.11.1     # 必须与 Docker 里的 ES 8.11.1 匹配，避免兼容头报错
+qdrant-client>=1.7.0      # 对应 Docker 的 Qdrant
+
+# --- AI 与 模型 ---
+torch                     # PyTorch (CPU版即可，除非你本地有N卡)
+sentence-transformers>=2.2.2 # 加载 Embedding 和精排模型
+numpy
+scikit-learn              # 用于计算简单的余弦相似度（备用）
+
+# --- 数据处理工具 ---
+pandas>=2.0.0             # 处理 Excel/CSV
+openpyxl                  # Pandas 读 Excel 需要它
+pdfplumber                # 解析 PDF (比 PyPDF2 强)
+
+# --- 辅助工具 ---
+python-dotenv             # 读取配置文件
+loguru                    # 比 print 更好用的日志打印工具
+requests                  # 发送 HTTP 请求
+tqdm                      # 显示进度条 (跑数据流水线时很有用)

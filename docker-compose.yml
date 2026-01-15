@@ -1,0 +1,62 @@
+services:
+  # ----------------------------------------
+  # 1. Elasticsearch (关键词检索)
+  # ----------------------------------------
+  elasticsearch:
+    image: elasticsearch:8.11.1
+    container_name: es_node
+    environment:
+      - discovery.type=single-node  # 单节点模式，适合毕设
+      - xpack.security.enabled=false # 关闭密码验证，开发方便
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # 限制 Java 内存为 512M，防止卡死你的电脑
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data # 数据持久化，重启不丢失
+    ports:
+      - "9200:9200" # HTTP 端口
+      - "9300:9300" # 内部通讯端口
+    networks:
+      - rag_net
+    mem_limit: 1g # 限制容器最大使用 1G 内存
+
+  # ----------------------------------------
+  # 2. Kibana (可视化查看 ES 数据，可选)
+  # ----------------------------------------
+  kibana:
+    image: kibana:8.11.1
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "15601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - rag_net
+    mem_limit: 1g
+
+  # ----------------------------------------
+  # 3. Qdrant (向量数据库)
+  # ----------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_node
+    ports:
+      - "6333:6333" # API 端口
+    volumes:
+      - qdrant_storage:/qdrant/storage # 数据持久化
+    networks:
+      - rag_net
+    mem_limit: 1g
+
+# 定义网络和存储卷
+networks:
+  rag_net:
+    driver: bridge
+
+volumes:
+  es_data:
+  qdrant_storage:

@@ -23,3 +23,5 @@ python-dotenv             # 读取配置文件
 loguru                    # 比 print 更好用的日志打印工具
 requests                  # 发送 HTTP 请求
 tqdm                      # 显示进度条 (跑数据流水线时很有用)
+beautifulsoup4
+lxml                     # 解析 HTML 网页

@@ -44,6 +44,34 @@ def clean_text_basic(text):
     text = "".join([c for c in text if c.isprintable()])
     return text.strip()
 
+
+def remove_crawl_footer(text: str) -> str:
+    """去除站点页尾/免责声明/导航等噪声（主要针对爬取文章 txt）。
+
+    策略：命中关键锚点后直接截断（通常页尾都在文章末尾）。
+    """
+    if not text:
+        return ""
+
+    # 收紧锚点：只用高置信度的“转载/出处”类声明做截断，避免误删正文
+    markers = [
+        "转载声明",
+        "如无特殊说明，本站所有文章均为原创",
+        "转载请注明出处",
+        "https://www.cncmachiningptj.com/",
+    ]
+
+    cut_idx = None
+    for m in markers:
+        idx = text.find(m)
+        if idx != -1:
+            cut_idx = idx if cut_idx is None else min(cut_idx, idx)
+
+    if cut_idx is not None:
+        return text[:cut_idx].rstrip()
+
+    return text
+
 def split_sentences(text):
     """
     语义分割：按句号、感叹号、问号、换行符切分句子
@@ -67,11 +95,71 @@ def split_sentences(text):
         
     return [s for s in sentences if s]
 
+
+def _looks_like_md_table_separator(line: str) -> bool:
+    s = line.strip()
+    if not (s.startswith("|") and s.endswith("|")):
+        return False
+    # 典型分隔行：| --- | ---: | :--- |
+    cells = [c.strip() for c in s.strip("|").split("|")]
+    if not cells:
+        return False
+    ok = 0
+    for c in cells:
+        c2 = c.replace(":", "").replace("-", "").strip()
+        if c2 == "" and "-" in c:
+            ok += 1
+    return ok == len(cells)
+
+
+def split_sentences_preserve_md_tables(text: str):
+    """分句时保留 Markdown 表格为整块，避免被 '\n' 规则打散。"""
+    if not text:
+        return []
+
+    lines = text.splitlines()
+    segments = []
+    buffer_lines = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # 识别 Markdown 表格：表头行 + 分隔行
+        if line.strip().startswith("|") and i + 1 < len(lines) and _looks_like_md_table_separator(lines[i + 1]):
+            # 先 flush 普通文本
+            if buffer_lines:
+                normal = "\n".join(buffer_lines)
+                segments.extend(split_sentences(normal))
+                buffer_lines = []
+
+            table_lines = [line, lines[i + 1]]
+            i += 2
+            while i < len(lines):
+                l2 = lines[i]
+                if l2.strip().startswith("|") and l2.strip().endswith("|"):
+                    table_lines.append(l2)
+                    i += 1
+                else:
+                    break
+
+            table_block = "\n".join(table_lines).strip()
+            if table_block:
+                segments.append(table_block)
+            continue
+
+        buffer_lines.append(line)
+        i += 1
+
+    if buffer_lines:
+        normal = "\n".join(buffer_lines)
+        segments.extend(split_sentences(normal))
+
+    return [s for s in segments if s]
+
 def semantic_chunking(text, chunk_size=CHUNK_SIZE):
     """
     语义切片：基于句子聚合，而不是字符硬切
     """
-    sentences = split_sentences(text)
+    sentences = split_sentences_preserve_md_tables(text)
     chunks = []
     
     current_chunk = []
@@ -79,6 +167,16 @@ def semantic_chunking(text, chunk_size=CHUNK_SIZE):
     
     for i, sent in enumerate(sentences):
         sent_len = len(sent)
+
+        # 表格块尽量不拆：如果表格本身超长，也单独作为一个 chunk 保存
+        is_table_block = sent.strip().startswith("|") and "\n|" in sent and "|---" in sent.replace(" ", "")
+        if is_table_block and sent_len > chunk_size:
+            if current_chunk:
+                chunks.append("".join(current_chunk))
+                current_chunk = []
+                current_len = 0
+            chunks.append(sent)
+            continue
         
         # 如果加上这句话超出了限制，先保存当前块
         if current_len + sent_len > chunk_size and current_len > 0:
@@ -267,6 +365,7 @@ def process_txt(file_path, file_name, doc_id):
             body_lines.append(ln)
 
         body_text = "\n".join(body_lines) if body_lines else raw_text
+        body_text = remove_crawl_footer(body_text)
         cleaned_text = clean_text_basic(body_text)
         if not cleaned_text:
             return results

@@ -73,6 +73,34 @@ def extract_article_title(soup: "BeautifulSoup") -> str:
 
     return ""
 
+
+def table_to_markdown(table_tag: "BeautifulSoup") -> str:
+    """把 HTML <table> 近似转换成 Markdown 表格，尽量保留结构。"""
+    rows = []
+    for tr in table_tag.select("tr"):
+        cells = tr.find_all(["th", "td"])
+        row = [c.get_text(" ", strip=True) for c in cells]
+        if row and any(x for x in row):
+            rows.append(row)
+
+    if not rows:
+        return ""
+
+    # 补齐列数
+    max_cols = max(len(r) for r in rows)
+    rows = [r + [""] * (max_cols - len(r)) for r in rows]
+
+    header = rows[0]
+    sep = ["---"] * max_cols
+    body = rows[1:]
+
+    def fmt(r):
+        return "| " + " | ".join((x or "").replace("\n", " ") for x in r) + " |"
+
+    out = [fmt(header), fmt(sep)]
+    out.extend(fmt(r) for r in body)
+    return "\n".join(out)
+
 def fetch_content(session: "requests.Session", url: str) -> tuple[str, str] | None:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
@@ -98,21 +126,41 @@ def fetch_content(session: "requests.Session", url: str) -> tuple[str, str] | No
             content_div = soup.select_one(CONTENT_SELECTOR)
         
             if content_div:
+                # 先将正文区域内所有 table 转换为 Markdown（避免被 get_text 打平）
+                content_clone = BeautifulSoup(str(content_div), "html.parser")
+                root_tag = content_clone.find(True)
+                if root_tag is not None:
+                    for t in list(root_tag.select("table")):
+                        md = table_to_markdown(t)
+                        if md:
+                            t.replace_with(content_clone.new_string("\n" + md + "\n"))
+                        else:
+                            t.decompose()
+                    content_div = root_tag
+
                 # 💡 优化：不直接 get_text，而是手动遍历，保留标题的层级感
                 lines = []
                 for child in content_div.children:
-                    if child.name in ['h1', 'h2', 'h3']:
+                    if getattr(child, "name", None) is None:
+                        text = str(child).strip()
+                        if text:
+                            lines.append(text)
+                    elif child.name in ['h1', 'h2', 'h3']:
                         # 给小标题加个标记，清洗时一看就知道这是重点
                         lines.append(f"\n### {child.get_text(strip=True)}\n")
                     elif child.name == 'p':
                         text = child.get_text(strip=True)
                         if text: # 跳过空段落
                             lines.append(text)
-                    elif child.name == 'div':
-                         # 处理截图里那种 div 包裹 p 的情况
-                         text = child.get_text(separator="\n", strip=True)
-                         if text:
-                             lines.append(text)
+                    elif child.name == 'table':
+                        md = table_to_markdown(child)
+                        if md:
+                            lines.append("\n" + md + "\n")
+                    else:
+                        # 其它标签兜底抽取（table 已被替换为 Markdown 文本）
+                        text = child.get_text(separator="\n", strip=True)
+                        if text:
+                            lines.append(text)
             
                 # 如果上面那种精细提取没拿到东西（防止网页结构微调），就兜底用 get_text
                 if not lines:
@@ -143,6 +191,7 @@ def main():
     parser.add_argument("--no-save", action="store_true", help="单链接测试：只打印预览，不写入文件")
     parser.add_argument("--preview", type=int, default=400, help="单链接测试：正文预览字符数")
     parser.add_argument("--json", action="store_true", help="单链接测试：以 JSON 输出（title/url/content）")
+    parser.add_argument("--overwrite", action="store_true", help="批量模式：覆盖已存在的 txt（用于重新下载以更新表格/内容）")
     args = parser.parse_args()
 
     if not os.path.exists(SAVE_DIR):
@@ -224,7 +273,7 @@ def main():
         save_path = os.path.join(SAVE_DIR, file_name)
         
         # 断点续传
-        if os.path.exists(save_path):
+        if os.path.exists(save_path) and not args.overwrite:
             continue
             
         result = fetch_content(session, link)

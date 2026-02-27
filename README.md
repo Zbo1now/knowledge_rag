@@ -7,12 +7,13 @@ knowledge_rag/
 ├── docker-compose.yml       # 基础设施（ES / Qdrant / Kibana）
 ├── requirements.txt         # 依赖清单
 ├── README.md                # 项目说明书
+├── .env.example             # 环境变量示例（模型服务配置）
 │
-├── app/                     # [后端部分] 负责 Web 服务和 API
-│   ├── main.py              # 启动入口
-│   ├── api/                 # 接口定义 (如 /search, /upload)
-│   ├── core/                # 全局配置 (数据库地址等)
-│   └── services/            # 业务逻辑 (ES连接, Qdrant连接)
+├── model_service/           # [模型服务侧] 提供 embedding/rerank 能力给检索平台调用
+│   ├── main.py              # FastAPI 启动入口（/health, /embed, /rerank）
+│   ├── settings.py          # 配置读取（支持 .env / 环境变量）
+│   ├── schemas.py           # 请求/响应结构
+│   └── api/                 # 路由实现
 │
 ├── data/                    # [数据仓库] 存放原始材料与处理产物
 │   ├── raw/                 # 原始文档 (PDF, Word, Excel日志)

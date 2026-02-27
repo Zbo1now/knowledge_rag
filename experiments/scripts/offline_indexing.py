@@ -5,7 +5,7 @@
     --input data/processed/knowledge.jsonl \
     --qdrant-url http://localhost:6333 \
     --collection knowledge_chunks \
-    --model all-MiniLM-L6-v2
+        --model BAAI/bge-base-zh-v1.5
 
 可选：同时写入 Elasticsearch（用于关键词检索）：
   python experiments/scripts/offline_indexing.py \
@@ -270,7 +270,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--model",
-        default="all-MiniLM-L6-v2",
+        default="BAAI/bge-base-zh-v1.5",
         help="SentenceTransformer model name/path (used when --vector-field not set)",
     )
     parser.add_argument("--batch-size", type=int, default=64)

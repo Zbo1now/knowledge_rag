@@ -2,6 +2,8 @@
 fastapi>=0.100.0
 uvicorn[standard]>=0.20.0  # ASGI 服务器
 python-multipart          # 允许接口上传文件
+pydantic-settings>=2.0.0
+pydantic-settings>=2.0.0  # BaseSettings (Pydantic v2)
 
 # --- 数据库客户端 ---
 elasticsearch==8.11.1     # 必须与 Docker 里的 ES 8.11.1 匹配，避免兼容头报错
@@ -17,6 +19,7 @@ scikit-learn              # 用于计算简单的余弦相似度（备用）
 pandas>=2.0.0             # 处理 Excel/CSV
 openpyxl                  # Pandas 读 Excel 需要它
 pdfplumber                # 解析 PDF (比 PyPDF2 强)
+python-docx               # 解析 Word 文档（virtual_articles）
 
 # --- 辅助工具 ---
 python-dotenv             # 读取配置文件

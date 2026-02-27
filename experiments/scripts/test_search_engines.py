@@ -12,9 +12,9 @@ QDRANT_COLLECTION = "knowledge_chunks"
 # 加载模型 (用于把问题变成向量)
 print("⏳ 正在加载模型 (可能需要几秒钟)...")
 # 重要：查询向量维度必须与 Qdrant collection 建库维度一致。
-# 你当前入库脚本默认用 all-MiniLM-L6-v2（384维），所以这里默认也用它。
-# 如果你改用 bge-small-zh-v1.5（512维），需要先用同一模型重新入库（--recreate）。
-EMBED_MODEL = os.getenv("EMBED_MODEL", "all-MiniLM-L6-v2")
+# 你当前入库脚本默认用 BAAI/bge-base-zh-v1.5（768维），所以这里默认也用它。
+# 如果你改用其它模型（比如 all-MiniLM-L6-v2=384维 / bge-small-zh-v1.5=512维），需要先用同一模型重新入库（--recreate）。
+EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-base-zh-v1.5")
 model = SentenceTransformer(EMBED_MODEL)
 # ===========================================
 

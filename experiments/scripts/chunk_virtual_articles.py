@@ -92,27 +92,64 @@ def looks_like_title(line: str) -> bool:
     return any(re.match(p, s) for p in _TITLE_PATTERNS)
 
 
-def semantic_chunking(sentences: list[str], cfg: ChunkConfig) -> list[str]:
-    chunks: list[str] = []
-    current: list[str] = []
+def _iter_sentences_with_section_titles(paragraphs: list[str]) -> list[tuple[str, str]]:
+    """把段落展开为 (sentence, section_title)。
+
+    关键点：section_title 是“就近标题”，会随着文档内容推进而变化。
+    """
+    current_title = "virtual_articles"
+    out: list[tuple[str, str]] = []
+    for p in paragraphs:
+        p_clean = clean_text_basic(p)
+        if not p_clean:
+            continue
+
+        if looks_like_title(p_clean):
+            current_title = p_clean
+            # 保留标题行本身，方便 chunk 里携带结构信息
+            out.append((p_clean + "\n", current_title))
+            continue
+
+        for sent in split_sentences(p_clean):
+            if sent.strip():
+                out.append((sent, current_title))
+
+        # 段落之间加一个换行提示（不会影响检索，但能保留一点结构感）
+        out.append(("\n", current_title))
+
+    return [(s, t) for s, t in out if s]
+
+
+def semantic_chunking(sentences: list[tuple[str, str]], cfg: ChunkConfig) -> list[tuple[str, str]]:
+    """语义切片：输入为 (sentence, section_title)，输出为 (chunk_text, chunk_section_title)。"""
+    chunks: list[tuple[str, str]] = []
+    current: list[tuple[str, str]] = []
     current_len = 0
 
-    for sent in sentences:
+    def finalize(buf: list[tuple[str, str]]) -> None:
+        text = "".join(s for s, _ in buf)
+        if len(text) < cfg.min_chunk_size:
+            return
+        # 取 chunk 内“最后一个句子”的 title，近似等于最近标题
+        chunk_title = buf[-1][1] if buf else "virtual_articles"
+        chunks.append((text, chunk_title))
+
+    for sent, title in sentences:
         sent_len = len(sent)
         if current_len + sent_len > cfg.chunk_size and current_len > 0:
-            chunks.append("".join(current))
+            finalize(current)
 
             overlap = current[-cfg.overlap_sentences :] if cfg.overlap_sentences > 0 else []
             current = list(overlap)
-            current_len = sum(len(x) for x in overlap)
+            current_len = sum(len(s) for s, _ in overlap)
 
-        current.append(sent)
+        current.append((sent, title))
         current_len += sent_len
 
     if current:
-        chunks.append("".join(current))
+        finalize(current)
 
-    return [c for c in chunks if len(c) >= cfg.min_chunk_size]
+    return chunks
 
 
 def iter_docx_chunks(file_path: str, rel_source: str, cfg: ChunkConfig) -> list[dict]:
@@ -122,29 +159,13 @@ def iter_docx_chunks(file_path: str, rel_source: str, cfg: ChunkConfig) -> list[
     doc = Document(file_path)
     paragraphs = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
 
-    # 标题跟踪：遇到看起来像标题的段落，就更新 section_title。
-    section_title = "virtual_articles"
-
-    # 将段落合成一个带换行的文本，保留结构线索。
-    cleaned_lines: list[str] = []
-    for p in paragraphs:
-        p_clean = clean_text_basic(p)
-        if not p_clean:
-            continue
-        if looks_like_title(p_clean):
-            section_title = p_clean
-            cleaned_lines.append(p_clean)
-            continue
-        cleaned_lines.append(p_clean)
-
-    full_text = "\n".join(cleaned_lines)
+    sentences_with_titles = _iter_sentences_with_section_titles(paragraphs)
     doc_id = _md5(rel_source)
 
-    sentences = split_sentences(full_text)
-    chunks = semantic_chunking(sentences, cfg)
+    chunks = semantic_chunking(sentences_with_titles, cfg)
 
     results: list[dict] = []
-    for idx, chunk_text in enumerate(chunks, start=1):
+    for idx, (chunk_text, chunk_section_title) in enumerate(chunks, start=1):
         anchor_match = re.match(r"[^。！？]*[。！？]", chunk_text)
         anchor = anchor_match.group() if anchor_match else chunk_text[:30]
 
@@ -156,7 +177,7 @@ def iter_docx_chunks(file_path: str, rel_source: str, cfg: ChunkConfig) -> list[
                 "source": rel_source.replace("\\", "/"),
                 "file_type": "docx",
                 "page_num": idx,
-                "section_title": section_title,
+                "section_title": chunk_section_title,
                 "content": chunk_text,
                 "anchor_text": anchor,
                 "chunk_len": len(chunk_text),

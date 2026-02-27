@@ -227,7 +227,21 @@ def _build_merged(
 ) -> SearchResult:
     payload0 = pages[run_pages[0]]
     title = payload0.get("title") if isinstance(payload0.get("title"), str) else None
-    section_title = payload0.get("section_title") if isinstance(payload0.get("section_title"), str) else None
+
+    best_page = run_pages[0]
+    best_score = float("-inf")
+    for pn in run_pages:
+        s = scores.get((doc_id, source, pn))
+        if s is not None and s > best_score:
+            best_score = s
+            best_page = pn
+
+    payload_best = pages.get(best_page, payload0)
+    section_title = (
+        payload_best.get("section_title")
+        if isinstance(payload_best.get("section_title"), str)
+        else None
+    )
 
     chunk_ids: list[str] = []
     texts: list[str] = []
